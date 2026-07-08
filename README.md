@@ -171,6 +171,10 @@ curl -X POST http://192.168.99.23:8428/alert \
 cd deploy
 docker compose -f loki-docker-compose.yml up -d
 ```
+验证 Loki
+```bash
+curl http://127.0.0.1:3100/ready        # 返回 ready（可能要等十几秒）
+```
 
 在 Grafana 添加 Loki 数据源（`http://<host>:3100`），新建 **Logs** 面板，查询示例：
 
