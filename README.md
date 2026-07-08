@@ -86,6 +86,14 @@ receivers:
     webhook_configs:
       - url: http://192.168.99.23:8428/alert
         send_resolved: true
+
+route:
+  receiver: 'feishu-card'        # 默认走这个
+  group_by: ['alertname', 'instance']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  # 如需部分告警仍走 PrometheusAlert，可加 routes 子路由分流
 ```
 
 ## systemd 部署
@@ -97,6 +105,55 @@ systemctl daemon-reload
 systemctl enable --now am-silence-proxy
 systemctl status am-silence-proxy
 ```
+
+## 测试告警
+1. 触发告警卡片 → 应为红色
+```bash
+curl -X POST http://192.168.99.23:8428/alert \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "alerts": [{
+      "status": "firing",
+      "labels": {"alertname":"颜色测试-触发","severity":"warning","instance":"1.2.3.4:9100","serviceName":"测试主机"},
+      "annotations": {"title":"红色卡片测试","template":"这是触发告警，应为红色"},
+      "startsAt": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
+    }]
+  }'
+```
+<img width="609" height="235" alt="image" src="https://github.com/user-attachments/assets/3158b079-9dff-4b35-8fad-88966aa654c9" />
+
+2. 恢复告警卡片 → 应为绿色
+```bash
+curl -X POST http://192.168.99.23:8428/alert \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "alerts": [{
+      "status": "resolved",
+      "labels": {"alertname":"颜色测试-恢复","severity":"warning","instance":"1.2.3.4:9100","serviceName":"测试主机"},
+      "annotations": {"title":"绿色卡片测试","template":"这是恢复告警，应为绿色"},
+      "startsAt": "'$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)'",
+      "endsAt": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
+    }]
+  }'
+```
+<img width="607" height="279" alt="image" src="https://github.com/user-attachments/assets/88e7a348-d3bb-46b9-9def-ea22b7901881" />
+
+3. 静默成功回执卡片 → 应为橙色
+```bash
+curl -X POST http://192.168.99.23:8428/alert \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "alerts": [{
+      "status": "resolved",
+      "labels": {"alertname":"颜色测试-恢复","severity":"warning","instance":"1.2.3.4:9100","serviceName":"测试主机"},
+      "annotations": {"title":"绿色卡片测试","template":"这是恢复告警，应为绿色"},
+      "startsAt": "'$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)'",
+      "endsAt": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
+    }]
+  }'
+```
+<img width="606" height="319" alt="image" src="https://github.com/user-attachments/assets/c5c62163-534f-472a-911a-b6e71090b62d" />
+
 
 > **代理环境提示**：若手动 `python` 启动正常、`systemctl` 启动却连不上飞书，通常是 systemd 不继承 shell 的代理变量。在 service 文件中补充：
 > ```ini
@@ -144,6 +201,8 @@ docker compose -f loki-docker-compose.yml up -d
 ```
 alertname="磁盘使用率",device="/dev/vda2"
 ```
+<img width="1560" height="747" alt="image" src="https://github.com/user-attachments/assets/4f254bbb-d206-458e-8ff6-844cc199ecd1" />
+
 
 ## 已知设计约束
 
