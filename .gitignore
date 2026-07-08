@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+*.egg-info/
+.eggs/
+
+# 本地配置 / 敏感信息
+config.local.py
+.env
+*.local
+
+# Loki 数据
+deploy/loki-data/
+loki-data/
+
+# 日志
+*.log
+
+# 编辑器 / 系统
+.idea/
+.vscode/
+.DS_Store
+*.swp

@@ -1,0 +1,19 @@
+[Unit]
+Description=Alertmanager 静默中转服务（飞书卡片+一键静默）
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root
+# 用绝对路径，避免 PATH 问题；python 路径按你机器实际情况改（which python3 查看）
+ExecStart=/usr/bin/python3 /root/am_silence_proxy.py
+Restart=always
+RestartSec=3
+# 日志走 journald，用 journalctl 查看
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
