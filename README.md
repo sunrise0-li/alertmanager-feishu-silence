@@ -82,7 +82,7 @@ python am_silence_proxy.py
 
 ```yaml
 receivers:
-  - name: feishu-proxy
+  - name: feishu-card
     webhook_configs:
       - url: http://192.168.99.23:8428/alert
         send_resolved: true
