@@ -1,0 +1,43 @@
+route:
+  receiver: 'feishu-card'
+  group_wait: 20s
+  group_interval: 2m
+  repeat_interval: 2h
+  group_by: ['alertname','app','instance','site']
+  routes:
+  # Zabbix 告警 → 群B 中转实例（:8429，推到新群机器人）
+  - receiver: 'feishu-zabbix'
+    match:
+      source: zabbix
+  # 其余告警（Prometheus 等）→ 群A 原有链路
+  - receiver: 'feishu-card'
+    group_wait: 20s
+    repeat_interval: 1h
+    match_re:
+      severity: critical|warning|High|fatal|low
+#    continue: true
+
+receivers:
+- name: 'feishu-card'
+  webhook_configs:
+  - url: 'http://192.168.99.23:8428/alert'
+    send_resolved: true
+- name: 'feishu-zabbix'
+  webhook_configs:
+  - url: 'http://192.168.99.23:8429/alert'
+    send_resolved: true
+
+inhibit_rules:
+# 原有规则：同 instance（主机维度）内 critical 压 warning，Prometheus 告警沿用
+- source_match:
+    severity: 'critical'
+  target_match:
+    severity: 'warning'
+  equal: ['instance']
+# 新增规则：同 site（站点/专线维度，跨主机）内 critical 压 warning 和 info
+# site 标签由 Zabbix webhook JS 按站点规则表写入，如 site="南阳4F-haier专线"
+- source_match:
+    severity: 'critical'
+  target_match_re:
+    severity: 'warning|info'
+  equal: ['site']

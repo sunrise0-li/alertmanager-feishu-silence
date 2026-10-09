@@ -1,0 +1,272 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "tags": ["alertmanager", "loki", "zabbix", "prometheus"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 2,
+        "includeAll": false,
+        "label": "数据源",
+        "multi": false,
+        "name": "DS_LOKI",
+        "options": [],
+        "query": "loki",
+        "refresh": 1,
+        "regex": "",
+        "type": "datasource"
+      },
+      {
+        "allValue": ".*",
+        "current": {"selected": true, "text": "All", "value": "$__all"},
+        "definition": "label_values({job=\"alertmanager\"}, severity)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "告警级别",
+        "multi": true,
+        "name": "severity",
+        "options": [],
+        "query": {"query": "label_values({job=\"alertmanager\"}, severity)", "refId": "VariableQueryEditor-VariableQuery"},
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {"from": "now-24h", "to": "now"},
+  "timezone": "browser",
+  "title": "告警中心 · Zabbix/Prometheus → Alertmanager → 飞书",
+  "uid": "alert-center-01",
+  "version": 2,
+  "panels": [
+    {
+      "datasource": {"type": "loki", "uid": "${DS_LOKI}"},
+      "gridPos": {"h": 5, "w": 8, "x": 0, "y": 0},
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "${DS_LOKI}"},
+          "expr": "sum(count_over_time({job=\"alertmanager\", status=\"firing\", severity=~\"$severity\"}[$__range]))",
+          "instant": false,
+          "queryType": "range",
+          "refId": "A",
+          "maxDataPoints": 2
+        }
+      ],
+      "title": "24h 触发告警总数（跟随时间范围）",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "${DS_LOKI}"},
+      "gridPos": {"h": 5, "w": 8, "x": 8, "y": 0},
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "${DS_LOKI}"},
+          "expr": "sum(count_over_time({job=\"alertmanager\", status=\"resolved\", severity=~\"$severity\"}[$__range]))",
+          "instant": false,
+          "queryType": "range",
+          "refId": "A",
+          "maxDataPoints": 2
+        }
+      ],
+      "title": "24h 恢复数（跟随时间范围）",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "${DS_LOKI}"},
+      "gridPos": {"h": 5, "w": 8, "x": 16, "y": 0},
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "${DS_LOKI}"},
+          "expr": "count(sum by (alertname) (count_over_time({job=\"alertmanager\", status=\"firing\", severity=~\"$severity\"}[$__range])))",
+          "instant": false,
+          "queryType": "range",
+          "refId": "A",
+          "maxDataPoints": 2
+        }
+      ],
+      "title": "告警种类数（跟随时间范围）",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "${DS_LOKI}"},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 5},
+      "id": 4,
+      "options": {
+        "displayLabels": ["name", "percent"],
+        "legend": {"displayMode": "table", "placement": "right", "values": ["value"]},
+        "pieType": "donut",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "tooltip": {"mode": "single", "sort": "none"}
+      },
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "${DS_LOKI}"},
+          "expr": "sum by (level) (count_over_time({job=\"alertmanager\", severity=~\"$severity\"}[$__range]))",
+          "instant": false,
+          "queryType": "range",
+          "refId": "A",
+          "maxDataPoints": 2
+        }
+      ],
+      "title": "按级别分布（critical红/warning黄/info绿=恢复）",
+      "type": "piechart"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "${DS_LOKI}"},
+      "gridPos": {"h": 8, "w": 16, "x": 8, "y": 5},
+      "id": 5,
+      "fieldConfig": {
+        "defaults": {
+          "custom": {"fillOpacity": 30, "lineWidth": 2, "showPoints": "never", "spanNulls": true}
+        },
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "critical"},
+            "properties": [{"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}]
+          },
+          {
+            "matcher": {"id": "byName", "options": "warning"},
+            "properties": [{"id": "color", "value": {"fixedColor": "yellow", "mode": "fixed"}}]
+          },
+          {
+            "matcher": {"id": "byName", "options": "info"},
+            "properties": [{"id": "color", "value": {"fixedColor": "green", "mode": "fixed"}}]
+          }
+        ]
+      },
+      "options": {
+        "legend": {"displayMode": "list", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      },
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "${DS_LOKI}"},
+          "expr": "sum by (level) (count_over_time({job=\"alertmanager\", severity=~\"$severity\"}[$__interval]))",
+          "queryType": "range",
+          "refId": "A",
+          "maxDataPoints": 200
+        }
+      ],
+      "title": "告警趋势（按级别）",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "${DS_LOKI}"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 13},
+      "id": 6,
+      "options": {
+        "displayMode": "gradient",
+        "legend": {"displayMode": "hide", "placement": "bottom", "showLegend": false},
+        "minVizHeight": 10,
+        "minVizWidth": 0,
+        "namePlacement": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "showUnfilled": true,
+        "sizing": "auto",
+        "valueMode": "color"
+      },
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "${DS_LOKI}"},
+          "expr": "topk(5, sum by (alertname) (count_over_time({job=\"alertmanager\", status=\"firing\", severity=~\"$severity\"}[$__range])))",
+          "instant": false,
+          "queryType": "range",
+          "refId": "A",
+          "maxDataPoints": 2
+        }
+      ],
+      "title": "触发 TOP 5 告警名称",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "${DS_LOKI}"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 13},
+      "id": 7,
+      "options": {
+        "displayMode": "gradient",
+        "legend": {"displayMode": "hide", "placement": "bottom", "showLegend": false},
+        "minVizHeight": 10,
+        "minVizWidth": 0,
+        "namePlacement": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "showUnfilled": true,
+        "sizing": "auto",
+        "valueMode": "color"
+      },
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "${DS_LOKI}"},
+          "expr": "topk(10, sum by (instance, serviceName) (count_over_time({job=\"alertmanager\", severity=~\"$severity\"} | json [$__range])))",
+          "instant": false,
+          "queryType": "range",
+          "refId": "A",
+          "maxDataPoints": 2
+        }
+      ],
+      "title": "触发 TOP 10 对象（主机/IP）",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "${DS_LOKI}"},
+      "gridPos": {"h": 14, "w": 24, "x": 0, "y": 21},
+      "id": 8,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "${DS_LOKI}"},
+          "expr": "{job=\"alertmanager\", severity=~\"$severity\"}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "实时告警日志流（红=critical 黄=warning 绿=恢复）",
+      "type": "logs"
+    }
+  ],
+  "timepicker": {}
+}

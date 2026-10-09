@@ -1,0 +1,12 @@
+[Unit]
+Description=Alertmanager Feishu Silence Proxy (Zabbix group, :8429)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /root/am_silence_proxy_zabbix.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -15,6 +15,7 @@
 - 🗂 **多告警合并**：一次 webhook 内的多条告警合并进同一张卡片。
 - 🕗 **东八区时间**：所有时间戳转为 CST 显示。
 - 📊 **Loki 日志**：低基数标签（`job/alertname/severity/status/level`）+ 完整 JSON 明细正文，配合 Grafana Logs 面板按级别着色。
+- 🔀 **Zabbix 接入**：通过 Webhook 媒介把 Zabbix 告警汇入同一 Alertmanager，按 `source` 标签分群推送，支持跨主机 `site` 维度告警抑制。
 
 ## 架构
 
@@ -30,6 +31,8 @@ Prometheus ─────► Alertmanager ────────────�
                                                              Loki (:3100) ──► Grafana Logs 面板
 ```
 
+> Zabbix 告警可通过 Webhook 媒介（JS 脚本）推送到同一 Alertmanager，按 `source=zabbix` 路由到第二实例 `:8429` 推送独立的飞书群，详见 [Zabbix 告警接入](docs/zabbix-integration.md)。
+
 ## 目录结构
 
 ```
@@ -39,10 +42,19 @@ alertmanager-feishu-silence/
 ├── README.md
 ├── LICENSE
 ├── .gitignore
-└── deploy/
-    ├── am-silence-proxy.service # systemd 单元文件
-    ├── loki-docker-compose.yml  # Loki 部署（可选）
-    └── loki-config.yml          # Loki 配置（可选）
+├── deploy/
+│   ├── am-silence-proxy.service # systemd 单元文件
+│   ├── loki-docker-compose.yml  # Loki 部署（可选）
+│   └── loki-config.yml          # Loki 配置（可选）
+├── examples/
+│   ├── zabbix/                  # Zabbix 告警接入示例（可选）
+│   │   ├── zabbix_alertmanager.js          # Zabbix Webhook 媒介 JS 脚本
+│   │   ├── alertmanager.yml                # 融合版 Alertmanager 配置（Zabbix 路由 + site 抑制）
+│   │   ├── am_silence_proxy_zabbix.py      # 第二实例（独立端口/独立飞书群）
+│   │   └── am-silence-proxy-zabbix.service # 第二实例 systemd 单元文件
+│   └── grafana-alert-center.json           # Grafana 告警中心看板（可选）
+└── docs/
+    └── zabbix-integration.md    # Zabbix 接入完整指南
 ```
 
 ## 快速开始
@@ -192,6 +204,20 @@ curl http://127.0.0.1:3100/ready        # 返回 ready（可能要等十几秒�
 | 其它 | `error` | 红 |
 
 > 改动前写入的旧日志没有 `level` 标签，只有新告警才带颜色。
+
+也可以直接导入开箱即用的告警中心看板：`examples/grafana-alert-center.json`（Grafana → Dashboards → Import），包含 24h 触发/恢复统计、级别分布、趋势、TOP5 告警、TOP10 对象、实时日志流。
+
+## Zabbix 告警接入（可选）
+
+把 Zabbix 告警汇入同一个 Alertmanager，复用本项目的飞书交互卡片、一键静默与 Loki 归档，并可按 `source: zabbix` 路由到第二实例（`:8429`）推送独立飞书群，与 Prometheus 告警分群。
+
+三步接入：
+
+1. **Zabbix Webhook 媒介类型**：Type 选 Webhook，粘贴 `examples/zabbix/zabbix_alertmanager.js`，配置 `{EVENT.SEVERITY}` / `{EVENT.NAME}` / `{HOST.NAME}` / `{IPADDRESS}` / `{EVENT.STATUS}` / `{EVENT.OPDATA}` 参数与消息模板（必须）。
+2. **Alertmanager 子路由**：`match: {source: zabbix}` 路由到第二实例，并新增 `equal: ['site']` 抑制规则（同专线跨主机 critical 压 warning/info）。
+3. **第二实例**：`examples/zabbix/am_silence_proxy_zabbix.py` 改 4 行配置（端口 8429、新群 webhook 等），systemd 部署。
+
+完整步骤、验证方法与实战坑位清单见 **[docs/zabbix-integration.md](docs/zabbix-integration.md)**。
 
 ## HTTP 接口
 
