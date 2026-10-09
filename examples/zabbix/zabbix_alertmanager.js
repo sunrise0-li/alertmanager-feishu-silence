@@ -31,7 +31,7 @@ var now = new Date();
 // auto-resolves it if the Zabbix recovery notification is ever lost.
 // Recovery: endsAt=now marks the matching alert resolved immediately.
 var startsAt = params.Status === 'RESOLVED' ? new Date(now.getTime() - 1000).toISOString() : now.toISOString();
-var endsAt = params.Status === 'RESOLVED' ? now.toISOString() : new Date(now.getTime() + 4 * 60 * 1000).toISOString();
+var endsAt = params.Status === 'RESOLVED' ? now.toISOString() : new Date(now.getTime() + 30 * 60 * 1000).toISOString();
 
 // Label/annotation keys aligned with am_silence_proxy.py:
 //   labels:      alertname / severity / instance / serviceName (object line)
