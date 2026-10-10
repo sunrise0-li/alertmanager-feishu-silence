@@ -588,40 +588,6 @@ def _top_n(counter, n):
     return sorted(counter.items(), key=lambda kv: kv[1], reverse=True)[:n]
 
 
-@app.route("/logs")
-def alert_logs():
-    """告警日志表格 JSON（Grafana Infinity table 直读扁平数组）。
-    参数 from/to：epoch 毫秒，缺省近 24h；limit 缺省 300 条。按时间倒序。"""
-    try:
-        frm = request.args.get("from", type=int)
-        to = request.args.get("to", type=int)
-        limit = request.args.get("limit", type=int, default=300)
-        end = (datetime.datetime.fromtimestamp(to / 1000, CST) if to
-               else datetime.datetime.now(CST))
-        start = (datetime.datetime.fromtimestamp(frm / 1000, CST) if frm
-                 else end - datetime.timedelta(hours=24))
-        records = _query_loki_alerts(start, end)
-    except Exception as e:
-        return jsonify([{"error": str(e)}]), 502
-    records.sort(key=lambda r: r.get("_ts", 0), reverse=True)
-    rows = []
-    for r in records[:limit]:
-        labels = r.get("labels", {})
-        ts = r.get("_ts", 0)
-        rows.append({
-            "time": datetime.datetime.fromtimestamp(ts, CST).strftime("%Y-%m-%d %H:%M:%S") if ts else "",
-            "alertname": labels.get("alertname", ""),
-            "severity": labels.get("severity", ""),
-            "host": labels.get("serviceName", ""),
-            "ip": labels.get("ip") or labels.get("instance", ""),
-            "site": labels.get("site", ""),
-            "station": labels.get("station", ""),
-            "status": r.get("status", ""),
-            "detail": r.get("template") or r.get("title", ""),
-        })
-    return jsonify(rows)
-
-
 def _human_secs(sec):
     """秒 -> 中文可读时长，如 27分36秒 / 2小时05分 / 3天2小时。"""
     sec = int(sec)
@@ -666,10 +632,8 @@ def report_stats():
         host = labels.get("serviceName") or labels.get("instance", "")
         if host:
             by_host[host] = by_host.get(host, 0) + 1
-            # IP 优先取新 ip 标签，旧数据无 ip 时兜底用 instance（Zabbix Target={HOST.IP}）
-            ip = labels.get("ip") or labels.get("instance", "")
-            if ip:
-                host_ip.setdefault(host, ip)
+            if labels.get("ip"):
+                host_ip.setdefault(host, labels["ip"])
         if labels.get("site"):
             by_site[labels["site"]] = by_site.get(labels["site"], 0) + 1
 

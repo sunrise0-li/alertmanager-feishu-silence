@@ -6,9 +6,12 @@ route:
   group_by: ['alertname','app','instance','site']
   routes:
   # Zabbix 告警 → 群B 中转实例（:8429，推到新群机器人）
+  # 必须放在其他子路由之前，先匹配先生效
+  # group_wait 单独调小：Zabbix 告警几乎各自独立成组，合并价值低，快推优先
   - receiver: 'feishu-zabbix'
     match:
       source: zabbix
+    group_wait: 5s
   # 其余告警（Prometheus 等）→ 群A 原有链路
   - receiver: 'feishu-card'
     group_wait: 20s

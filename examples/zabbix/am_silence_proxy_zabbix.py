@@ -28,7 +28,7 @@ import datetime
 import urllib.parse
 
 import requests
-from flask import Flask, request, Response
+from flask import Flask, request, Response, jsonify
 
 # ============ 配置区 ============
 ALERTMANAGER_URL = "http://192.168.99.20:9093"   # Alertmanager 地址
@@ -55,6 +55,18 @@ SILENCE_OPTIONS = [
     ("🔕 静默 1 天", "1d"),
     ("🔕 静默 2 天", "2d"),
     ("🔕 静默 1 周", "1w"),
+]
+
+# 楼层/站点级静默（仅当告警带对应标签时出现在下拉里）：
+# floor  filter 只带 site="成都/中汇/11楼"，拦该楼层全部告警；
+# station filter 只带 station="成都/中汇"，拦该站点全部告警。
+FLOOR_SILENCE_OPTIONS = [
+    ("🔕 静默本楼层 2 小时", "2h"),
+    ("🔕 静默本楼层 1 天", "1d"),
+]
+STATION_SILENCE_OPTIONS = [
+    ("🔕 静默本站点 2 小时", "2h"),
+    ("🔕 静默本站点 1 天", "1d"),
 ]
 
 # Loki 日志（可选）：填 push 地址即开启，留空 "" 则不推送。
@@ -156,7 +168,15 @@ def notify_feishu(human_dur, end_local, matchers, comment, view_url):
         return  # 未配置 webhook，跳过
 
     labels = {m["name"]: m["value"] for m in matchers}
-    alertname = labels.get("alertname", "未知告警")
+    # 站点/楼层级静默没有 alertname matcher，按类型显示范围
+    if "alertname" in labels:
+        alertname = labels["alertname"]
+    elif "site" in labels:
+        alertname = f"本楼层全部告警（{labels['site']}）"
+    elif "station" in labels:
+        alertname = f"本站点全部告警（{labels['station']}）"
+    else:
+        alertname = "未知告警"
     instance = labels.get("instance", "")
     service = labels.get("serviceName", "")
     severity = labels.get("severity", "")
@@ -249,8 +269,9 @@ def fmt_cst(ts_str):
     if not ts_str:
         return ""
     s = ts_str.strip().replace("Z", "+00:00")
-    # 截断过长的小数秒（Python fromisoformat 只认最多 6 位）
-    s = re.sub(r"(\.\d{6})\d+", r"\1", s)
+    # AM 会裁掉小数秒的尾随 0（如 .24），老版本 Python fromisoformat 只认 3/6 位，
+    # 统一补齐为 6 位再解析。
+    s = re.sub(r"\.(\d{1,6})(?:\d+)?", lambda m: "." + m.group(1).ljust(6, "0"), s)
     try:
         dt = datetime.datetime.fromisoformat(s)
         if dt.tzinfo is None:
@@ -311,6 +332,27 @@ def build_alert_element(alert):
              "url": silence_url(labels, dur)}
             for txt, dur in SILENCE_OPTIONS
         ]
+        # 第二个按钮：楼层/站点级静默（独立于普通静默的「…」按钮）
+        scoped_options = []
+        site_val = labels.get("site", "")
+        if site_val:
+            for txt, dur in FLOOR_SILENCE_OPTIONS:
+                scoped_options.append({
+                    "text": {"tag": "plain_text", "content": txt},
+                    "url": silence_url({"site": site_val}, dur),
+                })
+        station_val = labels.get("station", "")
+        if station_val:
+            for txt, dur in STATION_SILENCE_OPTIONS:
+                scoped_options.append({
+                    "text": {"tag": "plain_text", "content": txt},
+                    "url": silence_url({"station": station_val}, dur),
+                })
+        if scoped_options:
+            actions.append({
+                "tag": "overflow",
+                "options": scoped_options,
+            })
         actions.append({
             "tag": "overflow",
             "options": overflow_options,
@@ -488,6 +530,185 @@ def silence():
       <a class="btn" href="{view_url}" target="_blank">在 Alertmanager 查看</a>
     """
     return html_page("静默创建成功", body)
+
+
+# ---------- 告警统计（Grafana Infinity 面板 / 周报月报数据源） ----------
+
+def _query_loki_alerts(start_dt, end_dt, limit=5000):
+    """拉取时间范围内 job="alertmanager" 的告警记录，附带推送时刻(_ts 秒)。"""
+    # LOKI_URL 配的是 push 端点，推导出查询端点
+    query_url = LOKI_URL.replace("/loki/api/v1/push", "/loki/api/v1/query_range")
+    query = urllib.parse.urlencode({
+        "query": '{job="alertmanager"}',
+        "start": str(int(start_dt.timestamp() * 1e9)),
+        "end": str(int(end_dt.timestamp() * 1e9)),
+        "limit": limit,
+        "direction": "forward",
+    })
+    r = requests.get(f"{query_url}?{query}", timeout=30)
+    r.raise_for_status()
+    out = []
+    for stream in r.json().get("data", {}).get("result", []):
+        for ts, line in stream.get("values", []):
+            try:
+                rec = json.loads(line)
+                rec["_ts"] = int(ts) / 1e9
+                out.append(rec)
+            except json.JSONDecodeError:
+                continue
+    return out
+
+
+def _pair_durations(records, end_dt):
+    """按 (title, instance, serviceName) 配对触发/恢复，估算时长。
+    返回 (durations[(秒,标题,主机)], unresolved[(秒,标题,主机)])。
+    2h 升级重发视为同一问题，只计首次触发。"""
+    events = []
+    for r in records:
+        labels = r.get("labels", {})
+        title = r.get("title") or labels.get("alertname", "unknown")
+        key = (title, labels.get("instance", ""),
+               labels.get("serviceName", ""))
+        host = labels.get("serviceName") or labels.get("instance", "")
+        events.append((r.get("_ts", 0), r.get("status"), key, title, host))
+    events.sort(key=lambda e: e[0])
+    durations, opens = [], {}
+    for ts, status, key, title, host in events:
+        if status == "firing":
+            opens.setdefault(key, (ts, title, host))
+        elif status == "resolved" and key in opens:
+            since, t, h = opens.pop(key)
+            durations.append((max(ts - since, 0), t, h))
+    end_ts = end_dt.timestamp()
+    unresolved = [(max(end_ts - since, 0), t, h)
+                  for since, t, h in opens.values()]
+    return durations, unresolved
+
+
+def _top_n(counter, n):
+    return sorted(counter.items(), key=lambda kv: kv[1], reverse=True)[:n]
+
+
+@app.route("/logs")
+def alert_logs():
+    """告警日志表格 JSON（Grafana Infinity table 直读扁平数组）。
+    参数 from/to：epoch 毫秒，缺省近 24h；limit 缺省 300 条。按时间倒序。"""
+    try:
+        frm = request.args.get("from", type=int)
+        to = request.args.get("to", type=int)
+        limit = request.args.get("limit", type=int, default=300)
+        end = (datetime.datetime.fromtimestamp(to / 1000, CST) if to
+               else datetime.datetime.now(CST))
+        start = (datetime.datetime.fromtimestamp(frm / 1000, CST) if frm
+                 else end - datetime.timedelta(hours=24))
+        records = _query_loki_alerts(start, end)
+    except Exception as e:
+        return jsonify([{"error": str(e)}]), 502
+    records.sort(key=lambda r: r.get("_ts", 0), reverse=True)
+    rows = []
+    for r in records[:limit]:
+        labels = r.get("labels", {})
+        ts = r.get("_ts", 0)
+        rows.append({
+            "time": datetime.datetime.fromtimestamp(ts, CST).strftime("%Y-%m-%d %H:%M:%S") if ts else "",
+            "alertname": labels.get("alertname", ""),
+            "severity": labels.get("severity", ""),
+            "host": labels.get("serviceName", ""),
+            "ip": labels.get("ip") or labels.get("instance", ""),
+            "site": labels.get("site", ""),
+            "station": labels.get("station", ""),
+            "status": r.get("status", ""),
+            "detail": r.get("template") or r.get("title", ""),
+        })
+    return jsonify(rows)
+
+
+def _human_secs(sec):
+    """秒 -> 中文可读时长，如 27分36秒 / 2小时05分 / 3天2小时。"""
+    sec = int(sec)
+    if sec >= 86400:
+        d, h = sec // 86400, (sec % 86400) // 3600
+        return f"{d}天{h}小时" if h else f"{d}天"
+    if sec >= 3600:
+        h, m = sec // 3600, (sec % 3600) // 60
+        return f"{h}小时{m:02d}分" if m else f"{h}小时"
+    if sec >= 60:
+        return f"{sec // 60}分{sec % 60:02d}秒"
+    return f"{sec}秒"
+
+
+@app.route("/report")
+def report_stats():
+    """告警统计 JSON（返回单元素数组，Grafana Infinity simple parser 直读）。
+    参数 from/to：epoch 毫秒（Grafana 全局变量 ${__from}/${__to}），缺省近 24h。"""
+    try:
+        frm = request.args.get("from", type=int)
+        to = request.args.get("to", type=int)
+        end = (datetime.datetime.fromtimestamp(to / 1000, CST) if to
+               else datetime.datetime.now(CST))
+        start = (datetime.datetime.fromtimestamp(frm / 1000, CST) if frm
+                 else end - datetime.timedelta(hours=24))
+        records = _query_loki_alerts(start, end)
+    except Exception as e:
+        return jsonify([{"error": str(e)}]), 502
+
+    firing = [r for r in records if r.get("status") == "firing"]
+    resolved = [r for r in records if r.get("status") == "resolved"]
+    critical = [r for r in firing
+                if r.get("labels", {}).get("severity") == "critical"]
+
+    durations, unresolved = _pair_durations(records, end)
+    by_name, by_host, by_site = {}, {}, {}
+    host_ip = {}
+    for r in firing:
+        labels = r.get("labels", {})
+        name = r.get("title") or labels.get("alertname", "unknown")
+        by_name[name] = by_name.get(name, 0) + 1
+        host = labels.get("serviceName") or labels.get("instance", "")
+        if host:
+            by_host[host] = by_host.get(host, 0) + 1
+            # IP 优先取新 ip 标签，旧数据无 ip 时兜底用 instance（Zabbix Target={HOST.IP}）
+            ip = labels.get("ip") or labels.get("instance", "")
+            if ip:
+                host_ip.setdefault(host, ip)
+        if labels.get("site"):
+            by_site[labels["site"]] = by_site.get(labels["site"], 0) + 1
+
+    mttr = (sum(d for d, _, _ in durations) / len(durations)) if durations else 0
+    worst = max(durations, key=lambda x: x[0]) if durations else (0, "", "")
+    worst_open = max(unresolved, key=lambda x: x[0]) if unresolved else (0, "", "")
+    # ?list=top_names|top_hosts|top_sites：直接返回扁平数组（Infinity 前端解析器兼容）
+    list_name = request.args.get("list")
+    if list_name in ("top_names", "top_hosts", "top_sites"):
+        counters = {"top_names": by_name, "top_hosts": by_host, "top_sites": by_site}
+        return jsonify([{"name": k,
+                         **({"ip": host_ip.get(k, "")} if list_name == "top_hosts" else {}),
+                         "count": v}
+                        for k, v in _top_n(counters[list_name], 10)])
+    return jsonify([{
+        "window_start": start.strftime("%Y-%m-%d %H:%M"),
+        "window_end": end.strftime("%Y-%m-%d %H:%M"),
+        "firing_count": len(firing),
+        "resolved_count": len(resolved),
+        "critical_count": len(critical),
+        "kinds": len(by_name),
+        "mttr_seconds": round(mttr, 0),
+        "mttr_human": (f"{_human_secs(mttr)}（{len(durations)} 例）"
+                       if durations else "无完整配对"),
+        "mttr_count": len(durations),
+        "max_recovery_seconds": round(worst[0], 0),
+        "max_recovery_label": f"{worst[1]} @ {worst[2]}" if worst[1] else "",
+        "max_recovery_human": (f"{_human_secs(worst[0])}（{worst[1]} @ {worst[2]}）"
+                               if worst[1] else "无"),
+        "unresolved_count": len(unresolved),
+        "unresolved_max_seconds": round(worst_open[0], 0),
+        "unresolved_max_label": f"{worst_open[1]} @ {worst_open[2]}" if worst_open[1] else "",
+        "unresolved_max_human": (f"{_human_secs(worst_open[0])}（{worst_open[1]} @ {worst_open[2]}）"
+                                 if worst_open[1] else "无"),
+        "top_names": [{"name": k, "count": v} for k, v in _top_n(by_name, 10)],
+        "top_hosts": [{"name": k, "ip": host_ip.get(k, ""), "count": v} for k, v in _top_n(by_host, 10)],
+        "top_sites": [{"name": k, "count": v} for k, v in _top_n(by_site, 10)],
+    }])
 
 
 @app.route("/healthz")

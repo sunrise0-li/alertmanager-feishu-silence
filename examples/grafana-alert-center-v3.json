@@ -1,0 +1,347 @@
+{
+  "annotations": {"list": [{"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"}, "enable": true, "hide": true, "iconColor": "rgba(0, 211, 255, 1)", "name": "Annotations & Alerts", "type": "dashboard"}]},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": 65,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "dg0p49p3j4x6of"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"align": "auto", "cellOptions": {"type": "color-background"}, "footer": {"reducers": []}, "hideFrom": {"viz": false}, "inspect": false},
+          "mappings": [],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": 0}, {"color": "red", "value": 80}]}
+        },
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "级别"}, "properties": [{"id": "custom.width", "value": 87}, {"id": "mappings", "value": [{"options": {"critical": {"color": "dark-red", "index": 1, "text": "critical"}, "info": {"color": "dark-green", "index": 3, "text": "info"}, "suppressed": {"color": "text", "index": 2, "text": "suppressed"}, "warning": {"color": "dark-orange", "index": 0, "text": "warning"}}, "type": "value"}]}]},
+          {"matcher": {"id": "byName", "options": "对象"}, "properties": [{"id": "custom.width", "value": 182}]},
+          {"matcher": {"id": "byName", "options": "来源"}, "properties": [{"id": "custom.width", "value": 158}]},
+          {"matcher": {"id": "byName", "options": "状态"}, "properties": [{"id": "custom.width", "value": 305}]},
+          {"matcher": {"id": "byName", "options": "站点"}, "properties": [{"id": "custom.width", "value": 224}]},
+          {"matcher": {"id": "byName", "options": "告警名称"}, "properties": [{"id": "custom.width", "value": 295}]},
+          {"matcher": {"id": "byName", "options": "主机"}, "properties": [{"id": "custom.width", "value": 315}]}
+        ]
+      },
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
+      "id": 9,
+      "options": {"cellHeight": "sm", "showHeader": true},
+      "pluginVersion": "12.2.0",
+      "targets": [
+        {
+          "columns": [
+            {"selector": "labels.alertname", "text": "告警名称", "type": "string"},
+            {"selector": "labels.instance", "text": "对象", "type": "string"},
+            {"selector": "labels.serviceName", "text": "主机", "type": "string"},
+            {"selector": "labels.severity", "text": "级别", "type": "string"},
+            {"selector": "labels.site", "text": "站点", "type": "string"},
+            {"selector": "labels.source", "text": "来源", "type": "string"},
+            {"selector": "status.state", "text": "状态", "type": "string"},
+            {"selector": "startsAt", "text": "开始时间", "type": "timestamp"}
+          ],
+          "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "dg0p49p3j4x6of"},
+          "filters": [],
+          "format": "table",
+          "global_query_id": "",
+          "json_options": {"root_is_not_array": false},
+          "parser": "simple",
+          "refId": "A",
+          "root_selector": "",
+          "source": "url",
+          "type": "json",
+          "url": "http://192.168.99.20:9093/api/v2/alerts?active=true",
+          "url_options": {"data": "", "method": "GET"}
+        }
+      ],
+      "title": "未恢复告警",
+      "type": "table"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "${DS_LOKI}"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"hideFrom": {"legend": false, "tooltip": false, "viz": false}}, "mappings": []}, "overrides": []},
+      "gridPos": {"h": 9, "w": 6, "x": 0, "y": 8},
+      "id": 4,
+      "options": {"displayLabels": ["name", "percent"], "legend": {"displayMode": "table", "placement": "right", "showLegend": true, "values": ["value"]}, "pieType": "donut", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "sort": "desc", "tooltip": {"hideZeros": false, "mode": "single", "sort": "none"}},
+      "pluginVersion": "12.2.0",
+      "targets": [{"datasource": {"type": "loki", "uid": "${DS_LOKI}"}, "expr": "sum by (level) (count_over_time({job=\"alertmanager\", severity=~\"$severity\"}[$__range]))", "instant": false, "maxDataPoints": 2, "queryType": "range", "refId": "A"}],
+      "title": "按级别分布（critical红/warning黄/info绿=恢复）",
+      "type": "piechart"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "${DS_LOKI}"},
+      "fieldConfig": {"defaults": {"mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": 0}]}}, "overrides": []},
+      "gridPos": {"h": 3, "w": 4, "x": 6, "y": 8},
+      "id": 1,
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "auto", "wideLayout": true},
+      "pluginVersion": "12.2.0",
+      "targets": [{"datasource": {"type": "loki", "uid": "${DS_LOKI}"}, "direction": "backward", "editorMode": "code", "expr": "sum(count_over_time({job=\"alertmanager\", status=\"firing\", severity=~\"$severity\"}[$__range]))", "instant": false, "maxDataPoints": 2, "queryType": "range", "refId": "A"}],
+      "title": "触发告警总数",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "${DS_LOKI}"},
+      "fieldConfig": {"defaults": {"mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": 0}]}}, "overrides": []},
+      "gridPos": {"h": 3, "w": 4, "x": 6, "y": 11},
+      "id": 2,
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "auto", "wideLayout": true},
+      "pluginVersion": "12.2.0",
+      "targets": [{"datasource": {"type": "loki", "uid": "${DS_LOKI}"}, "direction": "backward", "editorMode": "code", "expr": "sum(count_over_time({job=\"alertmanager\", status=\"resolved\", severity=~\"$severity\"}[$__range]))", "instant": false, "maxDataPoints": 2, "queryType": "range", "refId": "A"}],
+      "title": "恢复数",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "${DS_LOKI}"},
+      "fieldConfig": {"defaults": {"mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "purple", "value": 0}]}}, "overrides": []},
+      "gridPos": {"h": 3, "w": 4, "x": 6, "y": 14},
+      "id": 3,
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "auto", "wideLayout": true},
+      "pluginVersion": "12.2.0",
+      "targets": [{"datasource": {"type": "loki", "uid": "${DS_LOKI}"}, "direction": "backward", "editorMode": "code", "expr": "count(sum by (alertname) (count_over_time({job=\"alertmanager\", status=\"firing\", severity=~\"$severity\"}[$__range])))", "instant": false, "maxDataPoints": 2, "queryType": "range", "refId": "A"}],
+      "title": "告警种类数",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "${DS_LOKI}"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "barWidthFactor": 0.6, "drawStyle": "line", "fillOpacity": 30, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "insertNulls": false, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "showValues": false, "spanNulls": true, "stacking": {"group": "A", "mode": "normal"}, "thresholdsStyle": {"mode": "off"}}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": 0}]}}, "overrides": [{"matcher": {"id": "byName", "options": "critical"}, "properties": [{"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}]}, {"matcher": {"id": "byName", "options": "warning"}, "properties": [{"id": "color", "value": {"fixedColor": "yellow", "mode": "fixed"}}]}, {"matcher": {"id": "byName", "options": "info"}, "properties": [{"id": "color", "value": {"fixedColor": "green", "mode": "fixed"}}]}]},
+      "gridPos": {"h": 9, "w": 14, "x": 10, "y": 8},
+      "id": 5,
+      "options": {"legend": {"calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"hideZeros": false, "mode": "multi", "sort": "desc"}},
+      "pluginVersion": "12.2.0",
+      "targets": [{"datasource": {"type": "loki", "uid": "${DS_LOKI}"}, "expr": "sum by (level) (count_over_time({job=\"alertmanager\", severity=~\"$severity\"}[$__interval]))", "maxDataPoints": 200, "queryType": "range", "refId": "A"}],
+      "title": "告警趋势（按级别，堆叠）",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "dg0p49p3j4x6of"},
+      "fieldConfig": {"defaults": {"color": {"fixedColor": "green", "mode": "fixed"}, "decimals": 0, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": 0}]}, "unit": "dthms"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 17},
+      "id": 30,
+      "description": "时间范围内已恢复告警的平均恢复耗时",
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "auto", "wideLayout": true},
+      "pluginVersion": "12.2.0",
+      "targets": [
+        {
+          "columns": [{"selector": "mttr_seconds", "text": "平均恢复时长", "type": "number"}],
+          "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "dg0p49p3j4x6of"},
+          "filters": [],
+          "format": "table",
+          "global_query_id": "",
+          "json_options": {"root_is_not_array": false},
+          "parser": "simple",
+          "refId": "A",
+          "root_selector": "",
+          "source": "url",
+          "type": "json",
+          "url": "http://192.168.99.23:8428/report?from=${__from}&to=${__to}",
+          "url_options": {"data": "", "method": "GET"}
+        }
+      ],
+      "title": "平均恢复时长 MTTR",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "dg0p49p3j4x6of"},
+      "fieldConfig": {"defaults": {"color": {"fixedColor": "orange", "mode": "fixed"}, "decimals": 0, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "orange", "value": 0}]}, "unit": "dthms"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 17},
+      "id": 31,
+      "description": "时间范围内单条告警最长恢复耗时",
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "auto", "wideLayout": true},
+      "pluginVersion": "12.2.0",
+      "targets": [
+        {
+          "columns": [{"selector": "max_recovery_seconds", "text": "最长恢复耗时", "type": "number"}],
+          "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "dg0p49p3j4x6of"},
+          "filters": [],
+          "format": "table",
+          "global_query_id": "",
+          "json_options": {"root_is_not_array": false},
+          "parser": "simple",
+          "refId": "A",
+          "root_selector": "",
+          "source": "url",
+          "type": "json",
+          "url": "http://192.168.99.23:8428/report?from=${__from}&to=${__to}",
+          "url_options": {"data": "", "method": "GET"}
+        }
+      ],
+      "title": "最长恢复耗时",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "dg0p49p3j4x6of"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [{"options": {"0": {"color": "green", "index": 0, "text": "全部已恢复"}}, "type": "value"}], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": 0}, {"color": "orange", "value": 1}, {"color": "red", "value": 5}]}, "unit": "short"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 17},
+      "id": 32,
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "auto", "wideLayout": true},
+      "pluginVersion": "12.2.0",
+      "targets": [
+        {
+          "columns": [{"selector": "unresolved_count", "text": "期末未恢复", "type": "number"}],
+          "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "dg0p49p3j4x6of"},
+          "filters": [],
+          "format": "table",
+          "global_query_id": "",
+          "json_options": {"root_is_not_array": false},
+          "parser": "simple",
+          "refId": "A",
+          "root_selector": "",
+          "source": "url",
+          "type": "json",
+          "url": "http://192.168.99.23:8428/report?from=${__from}&to=${__to}",
+          "url_options": {"data": "", "method": "GET"}
+        }
+      ],
+      "title": "期末未恢复条数",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "dg0p49p3j4x6of"},
+      "fieldConfig": {"defaults": {"color": {"fixedColor": "red", "mode": "fixed"}, "decimals": 0, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": 0}, {"color": "orange", "value": 3600}, {"color": "red", "value": 21600}]}, "unit": "dthms"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 17},
+      "id": 33,
+      "description": "期末仍未恢复的告警中，已持续最长的一条（绿<1h/橙1-6h/红>6h）",
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "auto", "wideLayout": true},
+      "pluginVersion": "12.2.0",
+      "targets": [
+        {
+          "columns": [{"selector": "unresolved_max_seconds", "text": "最长未恢复已持续", "type": "number"}],
+          "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "dg0p49p3j4x6of"},
+          "filters": [],
+          "format": "table",
+          "global_query_id": "",
+          "json_options": {"root_is_not_array": false},
+          "parser": "simple",
+          "refId": "A",
+          "root_selector": "",
+          "source": "url",
+          "type": "json",
+          "url": "http://192.168.99.23:8428/report?from=${__from}&to=${__to}",
+          "url_options": {"data": "", "method": "GET"}
+        }
+      ],
+      "title": "最长未恢复已持续",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "${DS_LOKI}"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"align": "auto", "cellOptions": {"type": "auto"}, "inspect": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": 0}, {"color": "red", "value": 80}]}, "unit": "short"}, "overrides": [{"matcher": {"id": "byName", "options": "次数"}, "properties": [{"id": "custom.width", "value": 90}]}]},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 21},
+      "id": 6,
+      "options": {"cellHeight": "sm", "showHeader": true, "footer": {"show": false, "reducers": []}},
+      "pluginVersion": "12.2.0",
+      "targets": [
+        {
+          "columns": [{"selector": "name", "text": "告警名称", "type": "string"}, {"selector": "count", "text": "次数", "type": "number"}],
+          "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "dg0p49p3j4x6of"},
+          "filters": [],
+          "format": "table",
+          "global_query_id": "",
+          "json_options": {"root_is_not_array": false},
+          "parser": "backend",
+          "refId": "A",
+          "root_selector": "",
+          "source": "url",
+          "type": "json",
+          "url": "http://192.168.99.23:8428/report?list=top_names&from=${__from}&to=${__to}",
+          "url_options": {"data": "", "method": "GET"}
+        }
+      ],
+      "title": "触发 TOP 10 告警名称",
+      "type": "table"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "${DS_LOKI}"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"align": "auto", "cellOptions": {"type": "auto"}, "inspect": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": 0}, {"color": "red", "value": 80}]}, "unit": "short"}, "overrides": [{"matcher": {"id": "byName", "options": "次数"}, "properties": [{"id": "custom.width", "value": 90}]}]},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 21},
+      "id": 7,
+      "options": {"cellHeight": "sm", "showHeader": true, "footer": {"show": false, "reducers": []}},
+      "pluginVersion": "12.2.0",
+      "targets": [
+        {
+          "columns": [{"selector": "name", "text": "主机/IP", "type": "string"}, {"selector": "ip", "text": "IP", "type": "string"}, {"selector": "count", "text": "次数", "type": "number"}],
+          "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "dg0p49p3j4x6of"},
+          "filters": [],
+          "format": "table",
+          "global_query_id": "",
+          "json_options": {"root_is_not_array": false},
+          "parser": "backend",
+          "refId": "A",
+          "root_selector": "",
+          "source": "url",
+          "type": "json",
+          "url": "http://192.168.99.23:8428/report?list=top_hosts&from=${__from}&to=${__to}",
+          "url_options": {"data": "", "method": "GET"}
+        }
+      ],
+      "title": "触发 TOP 10 对象（主机/IP）",
+      "type": "table"
+    },
+    {
+      "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "dg0p49p3j4x6of"},
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "palette-classic"}, "custom": {"align": "auto", "cellOptions": {"type": "auto"}, "inspect": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": 0}]}},
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "级别"}, "properties": [{"id": "custom.width", "value": 85}, {"id": "mappings", "value": [{"options": {"critical": {"color": "dark-red", "index": 1, "text": "critical"}, "info": {"color": "dark-green", "index": 3, "text": "info"}, "warning": {"color": "dark-orange", "index": 0, "text": "warning"}}, "type": "value"}]}]},
+          {"matcher": {"id": "byName", "options": "状态"}, "properties": [{"id": "custom.width", "value": 90}, {"id": "mappings", "value": [{"options": {"firing": {"color": "red", "index": 0, "text": "firing"}, "resolved": {"color": "green", "index": 1, "text": "resolved"}}, "type": "value"}]}]},
+          {"matcher": {"id": "byName", "options": "时间"}, "properties": [{"id": "custom.width", "value": 130}]},
+          {"matcher": {"id": "byName", "options": "IP"}, "properties": [{"id": "custom.width", "value": 140}]},
+          {"matcher": {"id": "byName", "options": "站点"}, "properties": [{"id": "custom.width", "value": 170}]},
+          {"matcher": {"id": "byName", "options": "主机"}, "properties": [{"id": "custom.width", "value": 200}]},
+          {"matcher": {"id": "byName", "options": "楼层"}, "properties": [{"id": "custom.width", "value": 170}]}
+        ]
+      },
+      "gridPos": {"h": 14, "w": 24, "x": 0, "y": 29},
+      "id": 8,
+      "description": "由 proxy /logs 接口提供结构化告警日志（解析 Loki JSON 日志行），按时间倒序，最多 300 条",
+      "options": {"cellHeight": "sm", "showHeader": true, "footer": {"show": false, "reducers": []}},
+      "pluginVersion": "12.2.0",
+      "targets": [
+        {
+          "columns": [
+            {"selector": "time", "text": "时间", "type": "string"},
+            {"selector": "severity", "text": "级别", "type": "string"},
+            {"selector": "status", "text": "状态", "type": "string"},
+            {"selector": "alertname", "text": "告警名称", "type": "string"},
+            {"selector": "host", "text": "主机", "type": "string"},
+            {"selector": "ip", "text": "IP", "type": "string"},
+            {"selector": "site", "text": "站点", "type": "string"},
+            {"selector": "station", "text": "楼层", "type": "string"},
+            {"selector": "detail", "text": "详情", "type": "string"}
+          ],
+          "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "dg0p49p3j4x6of"},
+          "filters": [],
+          "format": "table",
+          "global_query_id": "",
+          "json_options": {"root_is_not_array": false},
+          "parser": "backend",
+          "refId": "A",
+          "root_selector": "",
+          "source": "url",
+          "type": "json",
+          "url": "http://192.168.99.23:8428/logs?from=${__from}&to=${__to}&limit=300",
+          "url_options": {"data": "", "method": "GET"}
+        }
+      ],
+      "title": "实时告警日志（表格，红=critical 黄=warning 绿=resolved）",
+      "type": "table"
+    }
+  ],
+  "preload": false,
+  "refresh": "1m",
+  "schemaVersion": 42,
+  "tags": ["alertmanager", "loki", "zabbix", "prometheus"],
+  "templating": {
+    "list": [
+      {"current": {"text": "loki", "value": "dfrgkzj2kw5j4c"}, "hide": 2, "includeAll": false, "label": "数据源", "name": "DS_LOKI", "options": [], "query": "loki", "refresh": 1, "regex": "", "type": "datasource"},
+      {"allValue": ".*", "current": {"text": "All", "value": "$__all"}, "definition": "label_values({job=\"alertmanager\"}, severity)", "includeAll": true, "label": "告警级别", "multi": true, "name": "severity", "options": [], "query": {"query": "label_values({job=\"alertmanager\"}, severity)", "refId": "VariableQueryEditor-VariableQuery"}, "refresh": 2, "regex": "", "sort": 1, "type": "query"}
+    ]
+  },
+  "time": {"from": "now-24h", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "告警中心 · Zabbix/Prometheus → Alertmanager → 飞书",
+  "uid": "alert-center-01",
+  "version": 26
+}

@@ -60,8 +60,13 @@ examples/grafana-alert-center.json   # Grafana 告警中心看板（可选）
 | `Target` | `{IPADDRESS}` | 主机 IP → `instance` 标签 |
 | `Status` | `{EVENT.STATUS}` | `PROBLEM` / `RESOLVED` |
 | `Detail` | `{EVENT.OPDATA}` | 当前运维数据 → 卡片详情 |
+| `APIURL` | `http://<zabbix>/api_jsonrpc.php` | （可选）Zabbix API 地址，用于反查主机群组作为 `site` |
+| `APITOKEN` | Zabbix API Token | （可选）用户设置 → API 令牌 中创建。**不要提交到仓库** |
+| `HostID` | `{HOST.ID}` | （可选）主机 ID，配合上面两项查询该主机所属群组 |
 
 > ⚠️ `Detail` 不要用 `{EVENT.RECOVERY.MESSAGE}`——该宏**只在恢复操作的消息正文里解析**，放进媒介参数永远是字面量。
+>
+> 💡 `APIURL / APITOKEN / HostID` 三项都填了，脚本会自动调 Zabbix API 取主机所属群组（取最长的组名，如 `南阳万达/3楼`）作为 `site` 标签——按楼层分组的主机无需再维护 site_rules；三项缺任一或 API 失败则回退 site_rules 规则表，再兜底主机名/IP。
 
 ### 1.2 消息模板（Message templates）
 
@@ -75,69 +80,8 @@ examples/grafana-alert-center.json   # Grafana 告警中心看板（可选）
 粘贴 `examples/zabbix/zabbix_alertmanager.js` 全文：
 
 ```javascript
-var params = JSON.parse(value),
-    req = new HttpRequest(),
-    severity_map = {
-        disaster: 'critical',
-        high: 'critical',
-        average: 'warning',
-        warning: 'warning',
-        information: 'info',
-        'not classified': 'info'
-    },
-    severity = severity_map[params.Level.toLowerCase()] || 'info',
-    site_rules = [
-        { match: '南阳4F-haier', site: '南阳4F-haier专线' }
-    ],
-    site = params.Host || params.Target,
-    i,
-    alert;
-
-// Site label: used by Alertmanager inhibit_rules (equal: ['site']).
-// Add one rule per site/link; fallback is host or IP so the label is never empty.
-for (i = 0; i < site_rules.length; i++) {
-    if ((params.Name || '').indexOf(site_rules[i].match) !== -1 ||
-        (params.Host || '').indexOf(site_rules[i].match) !== -1) {
-        site = site_rules[i].site;
-        break;
-    }
-}
-
-var now = new Date();
-// Problem: keep the alert alive for 4min (< resolve_timeout 5m) so Alertmanager
-// auto-resolves it if the Zabbix recovery notification is ever lost.
-// Recovery: endsAt=now marks the matching alert resolved immediately.
-var startsAt = params.Status === 'RESOLVED' ? new Date(now.getTime() - 1000).toISOString() : now.toISOString();
-var endsAt = params.Status === 'RESOLVED' ? now.toISOString() : new Date(now.getTime() + 4 * 60 * 1000).toISOString();
-
-// Label/annotation keys aligned with am_silence_proxy.py:
-//   labels:      alertname / severity / instance / serviceName (object line)
-//   annotations: title (card line title, fallback alertname) / template|description (detail)
-alert = {
-    labels: {
-        alertname: params.Name,
-        severity: severity,
-        instance: params.Target,
-        serviceName: params.Host,
-        site: site,
-        source: 'zabbix'
-    },
-    annotations: {
-        title: params.Name,
-        description: params.Detail || params.Subject,
-        zabbix_status: params.Status
-    },
-    startsAt: startsAt,
-    endsAt: endsAt
-};
-
-req.addHeader('Content-Type: application/json');
-var resp = req.post(params.URL, JSON.stringify([alert]));
-
-if (req.getStatus() !== 200) {
-    throw 'Alertmanager failed: HTTP ' + req.getStatus() + ' ' + resp;
-}
-return resp;
+// 完整脚本见仓库文件 examples/zabbix/zabbix_alertmanager.js（与此处保持同步，以文件为准）。
+// 粘贴时使用该文件原文，避免从聊天窗口复制带入全角字符。
 ```
 
 **脚本要点：**
@@ -145,8 +89,9 @@ return resp;
 | 设计 | 说明 |
 | --- | --- |
 | `severity_map` | Zabbix 级别映射为 AM 级别：disaster/high → `critical`，average/warning → `warning`，其余 → `info` |
-| `site_rules` | 按触发器名称/主机名关键词提取「站点」标签，供 `inhibit_rules` 的 `equal: ['site']` 匹配。**每条专线/站点加一行规则**；兜底为主机名或 IP，标签永不为空 |
-| `endsAt` 问题 = now+4min | 小于 AM 的 `resolve_timeout`（默认 5m）：即使 Zabbix 恢复通知丢失，AM 也会在 4 分钟后自动 resolve，告警不会常驻 |
+| `site_rules` | **站点标签三级取值**：① 配了 `APIURL/APITOKEN/HostID` 时调 Zabbix API 反查主机群组（取最长组名，如 `南阳万达/3楼`），按楼层分组的主机零维护；② API 未配或失败时用 site_rules 规则表按关键词提取（仅在 site 仍是裸主机名/IP 时生效）；③ 兜底主机名或 IP，标签永不为空。标签供 `inhibit_rules` 的 `equal: ['site']` 及站点级静默使用 |
+| 自动标注带宽方向 | 详情形如「X Mbps, Y Mbps」两个值时，脚本自动改写为「IN: X Mbps, OUT: Y Mbps」——无需逐个修改触发器的操作数据字段；ICMP/CPU 等其它格式原样透传。前提：触发器表达式按 先 IN 后 OUT 的顺序写（Zabbix 惯例） |
+| `endsAt` 问题 = now+2h10m | Zabbix 动作配置了每 2h 重发未恢复问题（升级步骤），`endsAt` 取 2h10m（略长于重发间隔）保证重发之间**无缝续期**——AM/Karma 里故障期间持续可见，`inhibit_rules` 的 `equal: ['site']` 也全程生效。恢复通知到达时 `endsAt=now` 立即 resolve，不受影响；恢复通知丢失时最长残留 2h10m 后自动清理 |
 | `endsAt` 恢复 = now | 与问题告警按标签匹配，立即 resolve |
 | 标签对齐 | `alertname/severity/instance/serviceName` 与本服务消费的标签完全对齐；`annotations.title` 作为卡片行标题 |
 
@@ -173,9 +118,11 @@ route:
   routes:
   # Zabbix 告警 → 群B 中转实例（:8429，推到新群机器人）
   # ⚠️ 必须放在其他子路由之前，先匹配先生效
+  # group_wait 单独调小：Zabbix 告警几乎各自独立成组，合并价值低，快推优先
   - receiver: 'feishu-zabbix'
     match:
       source: zabbix
+    group_wait: 5s
   # 其余告警（Prometheus 等）→ 群A 原有链路
   - receiver: 'feishu-card'
     group_wait: 20s
@@ -214,6 +161,7 @@ inhibit_rules:
 | 设计 | 说明 |
 | --- | --- |
 | 子路由顺序 | `match: {source: zabbix}` 放在 `match_re` 子路由**之前**，Zabbix 告警优先命中分群路由 |
+| 首次通知延迟 ≈ `group_wait` | AM 收到告警后会等 `group_wait` 再发第一次通知（合并同组告警的设计）。全局 20s 对 Zabbix 场景太长，子路由单独设 `group_wait: 5s`；追求极致可设 `0s`，代价是同时到达的多条告警不再合并成一卡 |
 | `equal: ['instance']` 与 `equal: ['site']` 并存 | 两条规则是 OR 关系：主机维度抑制沿用原行为，站点维度覆盖跨主机场景（同一专线两台主机 `instance` 不同但 `site` 相同） |
 | 旧语法 `match`/`source_match` | Alertmanager 0.22+ 标记 deprecated 但完全兼容；如需新语法可改写为 `matchers: ['source="zabbix"']` |
 | `send_resolved: true` | 恢复通知统一由 Alertmanager 下发，走本服务渲染绿色恢复卡片 |
@@ -270,11 +218,11 @@ curl -X POST http://<alertmanager>:9093/api/v2/alerts \
     },
     "annotations": {"title": "接入测试-触发", "description": "curl 注入测试"},
     "startsAt": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'",
-    "endsAt": "'$(date -u -d '+4 minute' +%Y-%m-%dT%H:%M:%SZ)'"
+    "endsAt": "'$(date -u -d '+30 minute' +%Y-%m-%dT%H:%M:%SZ)'"
   }]'
 ```
 
-预期：Alertmanager UI Alerts 列表出现该告警（带 `source=zabbix`）→ 约 `group_wait` 后飞书群B 收到红色卡片 → 不手动 resolve 的话约 4~5 分钟后自动收到绿色恢复卡片。
+预期：Alertmanager UI Alerts 列表出现该告警（带 `source=zabbix`）→ 约 `group_wait` 后飞书群B 收到红色卡片 → 正常情况下 Zabbix 恢复通知到达后立即收到绿色恢复卡片；若恢复通知丢失，最长 2h10m 后告警自动 resolve。
 
 **② Zabbix 侧测试**：媒介类型页「测试」按字面传参（宏不展开），Status 手填 `PROBLEM`/`RESOLVED` 各测一次；最后用真实触发器验证端到端。
 
@@ -283,6 +231,22 @@ curl -X POST http://<alertmanager>:9093/api/v2/alerts \
 **④ 抑制验证**：同 `site` 下先注入一条 `critical`，再注入 `warning`；后者在 Alertmanager UI 中显示 Suppressed，飞书不推。
 
 ---
+
+## 楼层/站点级静默（静默整个楼层或站点）
+
+告警同时携带两个标签（主机群组产生时）：
+
+- `site` = **楼层**：完整群组名，如 `成都/中汇/11楼`（同时用于 `inhibit_rules` 的 `equal: ['site']`）
+- `station` = **站点**：群组去掉最后一级，如 `成都/中汇`；群组名不含 `/` 时为空
+
+飞书卡片底部有**两个 ⋮ 按钮**：第一个是普通单条静默（2 小时/1 天/2 天/1 周）；第二个是楼层/站点静默，共 4 个选项：
+
+- 🔕 静默本楼层 2 小时 / 1 天（filter 只带 `site="成都/中汇/11楼"`，拦该楼层全部告警）
+- 🔕 静默本站点 2 小时 / 1 天（filter 只带 `station="成都/中汇"`，拦该站点全部告警）
+
+适合整层楼断电（用楼层）或整站点专线检修（用站点）。两个选项组在 `am_silence_proxy*.py` 的 `FLOOR_SILENCE_OPTIONS` / `STATION_SILENCE_OPTIONS`，按需增删时长。
+
+> 注意：站点级静默与 `inhibit_rules` 相互独立——静默是「时间段内不通知」，抑制是「critical 活跃时压低级别」；静默期间告警恢复不发恢复通知、重新触发同样被拦，到期时仍活跃的告警按 `repeat_interval` 补推。
 
 ## 实战坑位清单
 
@@ -293,7 +257,9 @@ curl -X POST http://<alertmanager>:9093/api/v2/alerts \
 | 动作日志 `No media defined for user.` | 动作引用的用户未挂载该媒介 | 用户 → 报警媒介中添加 |
 | 保存/执行脚本 `SyntaxError: invalid token` | 复制粘贴引入全角字符/不间断空格 | 使用 `examples/zabbix/zabbix_alertmanager.js` 原文件；中文仅允许出现在规则表字符串值中 |
 | 恢复消息里的宏传到脚本为字面量 | `{EVENT.RECOVERY.MESSAGE}` 只在恢复操作消息正文解析 | 媒介参数 `Detail` 用 `{EVENT.OPDATA}` |
-| 告警已恢复但 AM 里常驻不消失 | Zabbix 恢复通知丢失，AM 一直等 resolve | JS 已内置 `endsAt=now+4min < resolve_timeout 5m`，超时自动 resolve |
+| 告警已恢复但 AM 里常驻不消失 | Zabbix 恢复通知丢失，AM 一直等 resolve | JS 已内置 2h10m 兜底自动 resolve；正常恢复仍实时清理 |
+| 静默了 P0，同站点的 P1 却还在推 | 一键静默是精确匹配，只静默那一条告警本身；联动压制靠 `inhibit_rules`，而它要求 P0 在 AM 里处于活跃状态——若 `endsAt` 窗口太短，P0 早已过期消失，抑制无从谈起 | JS 已把问题告警 `endsAt` 拉长到 2h10m（配合动作每 2h 重发），故障期间 P0 一直活跃，同站点 warning/info 自动 Suppressed；另注意静默操作与抑制机制相互独立，静默不会让告警在 AM 里"复活" |
+| P0 触发超过 30 分钟后同站点 P1 恢复推送 | Zabbix 无重复通知机制时，P0 的活跃窗口就是那条 `endsAt` | 已通过 Zabbix 动作升级步骤（每 2h 重发）+ JS `endsAt=130*60*1000` 解决；调整重发间隔时需同步按比例调大该值 |
 | P0 触发后同站点 P1 仍推送 | `site` 标签未命中（检查 JS `site_rules` 是否覆盖该主机名/触发器名关键词） | 补规则行，站点关键词取触发器名称或主机名的稳定片段 |
 
 ---
