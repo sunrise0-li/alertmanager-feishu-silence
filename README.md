@@ -51,10 +51,13 @@ alertmanager-feishu-silence/
 │   │   ├── zabbix_alertmanager.js          # Zabbix Webhook 媒介 JS 脚本
 │   │   ├── alertmanager.yml                # 融合版 Alertmanager 配置（Zabbix 路由 + site 抑制）
 │   │   ├── am_silence_proxy_zabbix.py      # 第二实例（独立端口/独立飞书群）
-│   │   └── am-silence-proxy-zabbix.service # 第二实例 systemd 单元文件
-│   └── grafana-alert-center.json           # Grafana 告警中心看板（可选）
+│   │   ├── am-silence-proxy-zabbix.service # 第二实例 systemd 单元文件
+│   │   └── am_silence_proxy.py             # 第二实例同款 proxy
+│   ├── grafana-alert-center.json           # Grafana 告警中心看板·基础版（可选）
+│   ├── grafana-alert-center-v3.json        # Grafana 告警中心看板·v3（MTTR/未恢复指标+表格日志）
+│   └── alert_report.py                     # 告警周报/月报脚本（Loki 汇总→飞书卡片）
 └── docs/
-    └── zabbix-integration.md    # Zabbix 接入完整指南
+    └── zabbix-integration.md    # Zabbix 接入完整指南（含看板/周报月报部署）
 ```
 
 ## 快速开始
@@ -205,7 +208,7 @@ curl http://127.0.0.1:3100/ready        # 返回 ready（可能要等十几秒�
 
 > 改动前写入的旧日志没有 `level` 标签，只有新告警才带颜色。
 
-也可以直接导入开箱即用的告警中心看板：`examples/grafana-alert-center.json`（Grafana → Dashboards → Import），包含 24h 触发/恢复统计、级别分布、趋势、TOP5 告警、TOP10 对象、实时日志流。
+也可以直接导入开箱即用的告警中心看板：`examples/grafana-alert-center.json`（Grafana → Dashboards → Import），包含 24h 触发/恢复统计、级别分布、趋势、TOP5 告警、TOP10 对象、实时日志流。 v3 版本（`grafana-alert-center-v3.json`）额外提供 MTTR/最长恢复/未恢复指标与表格化日志。另提供 `alert_report.py` 周报/月报脚本，cron 定时把上一周期告警汇总推送到飞书群——部署见 `docs/zabbix-integration.md`。
 
 ## Zabbix 告警接入（可选）
 

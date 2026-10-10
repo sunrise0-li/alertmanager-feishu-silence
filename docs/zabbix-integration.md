@@ -266,4 +266,52 @@ curl -X POST http://<alertmanager>:9093/api/v2/alerts \
 
 ## Grafana 告警看板（可选）
 
-导入 `examples/grafana-alert-center.json`（Dashboards → Import），需要：Loki 已部署且两实例的 `LOKI_URL` 已配置、Grafana 已添加 Loki 数据源。包含 24h 触发/恢复统计、级别分布、趋势、TOP5 告警、TOP10 对象、实时日志流 8 个面板，Zabbix 与 Prometheus 告警统一展示。
+两个版本任选：
+
+- `examples/grafana-alert-center.json`（基础版，8 面板）：24h 触发/恢复统计、级别分布、趋势、TOP 告警、实时日志流，纯 Loki 数据源。
+- `examples/grafana-alert-center-v3.json`（推荐，13 面板）：在基础版之上增加 **平均恢复时长 MTTR / 最长恢复耗时 / 期末未恢复条数 / 最长未恢复已持续** 四个指标卡（dthms 时长单位）、TOP 表格化展示、**表格化实时日志**。v3 依赖 proxy 的 `/report` 与 `/logs` 接口：
+
+| 接口 | 说明 |
+| --- | --- |
+| `GET /report?from=&to=` | 统计汇总（epoch 毫秒参数）；`?list=top_names\|top_hosts\|top_sites` 返回扁平 TOP 数组 |
+| `GET /logs?from=&to=&limit=300` | 结构化告警日志（解析 Loki JSON 行），按时间倒序，时间带年份 |
+
+导入后将面板中 proxy 地址（默认 `http://192.168.99.23:8428`）替换为实际地址即可。
+
+---
+
+## 告警周报 / 月报（alert_report.py）
+
+定时把上一周期的告警汇总推送到飞书群：触发/恢复/critical 次数、平均恢复时长（MTTR）、最长恢复耗时、期末未恢复（含最长持续）、按告警名称/楼层/站点/主机 TOP5。
+
+### 部署步骤
+
+1. 脚本在 `examples/alert_report.py`，放到任意有 Python 3.8+ 的机器（与 proxy 同机即可），仅依赖标准库（urllib/json），无需 pip 安装；
+2. 修改脚本头部两个配置：
+
+```python
+LOKI_URL = "http://192.168.99.23:3100"          # Loki 地址（查询端点，不是 push 端点）
+FEISHU_WEBHOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/xxxx"  # 接收报表的飞书群机器人
+```
+
+3. 手动先跑一次验证：
+
+```bash
+python3 alert_report.py weekly    # 上一自然周（周一 00:00 ~ 周日 24:00）
+python3 alert_report.py monthly   # 上一自然月
+```
+
+飞书群收到蓝色卡片即成功。
+
+4. 配置 crontab 定时推送（周一早上发周报，每月 1 号发月报）：
+
+```cron
+0 9 * * 1  cd /opt/alert-report && /usr/bin/python3 alert_report.py weekly  >> /var/log/alert_report.log 2>&1
+0 9 1 * *  cd /opt/alert-report && /usr/bin/python3 alert_report.py monthly >> /var/log/alert_report.log 2>&1
+```
+
+### 说明
+
+- 统计数据来源与看板 v3 相同（Loki 中 `job="alertmanager"` 的 JSON 日志行），触发/恢复按 (告警名, 对象, 主机) 配对估算恢复时长，2h 升级重发只计首次触发；
+- 周报/月报统计的是**上一完整自然周期**，与看板的时间范围选择互不影响；
+- 想改推送时间或推送目标群，改 cron 时间和 `FEISHU_WEBHOOK` 即可。
